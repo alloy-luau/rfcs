@@ -1,0 +1,20 @@
+name: Close stale proposals
+on:
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          stale-pr-message: >
+            This RFC has seen no activity for 30 days. It closes in
+            another 30 unless the discussion picks up. A closed RFC may
+            open again with new data or a design that answers what sank
+            it.
+          days-before-stale: 30
+          days-before-close: 30
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
