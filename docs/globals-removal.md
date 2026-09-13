@@ -50,9 +50,13 @@ export function bump() counter += 1 end
 import { counter, LIMIT, bump } from "./a"
 ```
 
-A value that several files share is an `export local` in one module.
-The module's table holds the value, so every importer reads and writes
-the same slot; that is what the `global local` emit already did.
+A value that several files share is an `export local` in one module,
+read and written through the functions that module exports. A bare
+imported name is a copy taken at `require` time, as in Luau, so a
+write to it in another file reaches no one; `bump()` and `read()`
+above are the shape that shares. The `global local` emit rewrote every
+use to the module's slot; nothing replaces that, and the doc for
+`global` says so.
 
 ### The error
 
