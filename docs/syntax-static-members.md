@@ -2,15 +2,15 @@
 
 ## Summary
 
-A struct gains members that belong to the type and not to a value:
-`static` fields and `static const` constants, written in the struct
-body and read as `Wallet.count` or `Wallet.MAX`. A function in an
-`impl` that takes no `self` stays a static without any keyword, as it
-is today: `Wallet.new()`, `Vector3.zero()`, `Status.describe(s)`. The
-keyword is for data, where the absence of `self` cannot say it. This
-proposal gives the syntax, the emit, the checks, and the editor's
-answers, and settles the questions the last probe rounds raised for
-static functions.
+A type gains members that belong to it and not to a value, and one
+word marks every one of them: `static`. A struct body takes `static`
+fields and `static const` constants, read as `Wallet.made` and
+`Wallet.MAX`; an `impl` takes `static function`, called as
+`Wallet.new()`, `Vector3.zero()`, `Status.describe(s)`. A function in
+an `impl` with no `self` and no `static` is an error with a fix, and
+`self` inside a `static function` is an error. This proposal gives the
+syntax, the emit, the checks, and the editor's answers, and settles
+the questions the last probe rounds raised for static functions.
 
 ## Motivation
 
@@ -40,11 +40,15 @@ all, and reaches `MAX_COINS` only through a second import. In a class
 language the reader writes `Wallet.made` and `Wallet.MAX`, and the
 type is the one place to look.
 
-Static functions already exist and need no word: `function new()` with
-no `self` is one. The rules for them grew one fix at a time through
-the probe rounds (unit enums, generic impls, `private`, namespace
-paths); this proposal writes them down beside the new keyword so the
-type's statics are one family.
+Static functions already exist, and today the absence of `self` is
+the only mark. A reader scanning an `impl` has to read every
+parameter list to know which functions belong to the type; a
+`function new(coins: number)` and a `function balance(self)` look the
+same at a glance, and a `self` typed by mistake turns a static into a
+method with no report. The rules for statics also grew one fix at a
+time through the probe rounds (unit enums, generic impls, `private`,
+namespace paths). One word on every static member, data or function,
+lets the reader and the compiler know at the declaration.
 
 ## Design
 
@@ -59,14 +63,14 @@ export struct Wallet as
 end
 
 impl Wallet as
-    function new(coins: number): Wallet          -- a static function
+    static function new(coins: number): Wallet   -- a static function
         Wallet.made += 1
         local w = new Wallet { coins = math.min(coins, Wallet.MAX) }
         table.insert(Wallet.registry, w)
         return w
     end
 
-    function balance(self): number
+    function balance(self): number               -- a method
         return self.coins
     end
 end
@@ -83,12 +87,22 @@ print(Wallet.made, Wallet.MAX)
   A write to it is a `ConstError`.
 - `private static` and `private static const` are private to the
   struct's impls, as a private field is.
-- `static` goes only on a field of a `struct`. It is not written on a
-  function: a function in an `impl` with no `self` is a static already,
-  and a `static function` reports `` `static` goes on a field; a
-  function with no `self` is a static ``. An `enum`, an `interface`, a
-  `trait`, and a `type` take no `static`: an enum's constants are its
-  variants, and the rest declare shapes, not values.
+- `static function name(...)` in an `impl` declares a static
+  function. It takes no `self`. A function in an `impl` whose first
+  parameter is not `self` and that carries no `static` is an error,
+  and `alloy flux --fix` writes the word; `self` inside a `static
+  function`'s parameter list or body is an error that names the
+  method form. `private static function` is private to the impls.
+  `async static function` is the async form. The constructor
+  convention `new` is a static like any other and takes the word.
+- `static` on a field goes in a `struct` body only. An `enum`, an
+  `interface`, and a `type` take no `static` field: an enum's
+  constants are its variants, and the rest declare shapes, not
+  values. An `impl` on an enum or a foreign type takes `static
+  function` as an `impl` on a struct does.
+- A `trait` declares methods only; `static function` in a trait body
+  is an error, because `Self` is not a type there and a static has no
+  receiver to dispatch on.
 
 ### What it means
 
@@ -145,36 +159,49 @@ checker as well as in the compiler. A private static goes in the
 private view (`Wallet__private`) the way a private field does, and
 the `private_access` lint names an outside read or write.
 
-### Static functions, restated
+### Static functions
 
-A function in an `impl` whose first parameter is not `self` is a
-static of the type. The rules the compiler follows:
+A `static function` in an `impl` is a static of the type; a
+`function` with `self` is a method. The compiler reads the word, not
+the parameter list, and reports the two ways they can disagree:
+
+```
+error(3.6): StructError: `new` takes no `self`; a function of the type
+is written `static function new`
+error(3.6): StructError: `static function balance` takes `self`; a
+method is written `function balance(self)`
+```
+
+The first report carries the quickfix `Add \`static\``, and
+`alloy flux --fix` applies it project wide, which is the migration for
+every impl written before this proposal. The rules the compiler
+follows for a static function:
 
 - It is called with `.` on the type. `Wallet:new(5)` draws the
   `static_call` lint (correctness, warn) and `alloy flux --fix` writes
   the dot.
 - A unit enum is a string union at runtime, so every function in its
-  impl is a static: `Status.describe(s)`. A colon call on a receiver
-  typed as a unit enum reports `` `Status` is a unit enum, a string at
-  runtime; call `Status.describe(s)` ``. The recommended answer for a
-  mixed enum, one with a unit variant beside a payload variant, is the
-  same report: the unit value is still a string and the colon call
-  crashes on it. A colon call stays valid only for an enum whose every
-  variant carries a payload.
+  impl is a static and is written `static function describe(s:
+  Status)`: a `function describe(self)` on a unit enum reports `` a
+  unit enum is a string at runtime and carries no method; write
+  `static function describe(s: Status)` ``. The recommended answer for
+  a mixed enum, one with a unit variant beside a payload variant, is
+  the same rule: the unit value is still a string and a method call
+  on it crashes, so its impl takes statics only. A method with `self`
+  stays valid on an enum whose every variant carries a payload.
 - In `impl Box<T>`, a static carries the impl's parameter list only
-  when it names a parameter or takes `self`: `function of<U>(v: U):
-  Box<U>` emits `Box.of<U>`; `function map<U>(self, f)` emits
-  `Box.map<T, U>`. The turbofish `<<T>>` on a call leaves the ship
-  artifact and stays in the check artifact.
-- A `private` static function is a type error from outside and the
+  when it names a parameter: `static function of<U>(v: U): Box<U>`
+  emits `Box.of<U>`; a method always carries it, `function map<U>(self,
+  f)` emits `Box.map<T, U>`. The turbofish `<<T>>` on a call leaves the
+  ship artifact and stays in the check artifact.
+- A `private static function` is a type error from outside and the
   `private_access` lint in the same file, as a private method is.
 - `ConstructorError` fires when the callee IS a struct path called
   like a function, `Wallet(5)` or `M.Gadget(...)`, never for a member
   of that path: `M.Gadget.make()` is a static call.
-- A trait declares instance methods only; a signature without `self`
-  is not a trait member, since `Self` is not a type there.
-- `impl Vector3` takes statics as it takes methods; the editor injects
-  them into the definitions and the runtime dispatcher installs them.
+- `impl Vector3` takes `static function zero(): Vector3` as it takes
+  methods; the editor injects it into the definitions and the runtime
+  dispatcher installs it.
 
 ### What the editor answers
 
@@ -182,21 +209,30 @@ static of the type. The rules the compiler follows:
   (kind `field` and `constant`) beside the static functions and the
   constructor; after `w.` and `w:` the instance members only.
 - A hover on `made` reads `static made: number` with `A static of
-  \`struct Wallet\`.`; on `MAX` `static const MAX: number = 1000`.
+  \`struct Wallet\`.`; on `MAX` `static const MAX: number = 1000`; on
+  `new` `static function Wallet.new(coins: number): Wallet`; on
+  `balance` `function Wallet:balance(self: Wallet): number`.
 - Definition, references, and rename cover a static from the struct
   body and from every `Wallet.made` site, within the file, through an
   import, and through a dependency project. `Wallet.made` and `w.coins`
   never share a rename.
 - A `self.made` report carries a quickfix `Rewrite as \`Wallet.made\``.
-- The formatter keeps `static` and `private static` in front of the
-  field, one form, stable on a second pass.
+- The formatter keeps `static`, `private static`, and `async static`
+  in front of the field or the function, in that order, one form,
+  stable on a second pass. `alloy fmt` does not add the word; `alloy
+  flux --fix` does.
 
 ### Errors, in the compiler's words
 
 - `static made: number` with no value: `` a static needs a value: `static
   made: number = 0` ``.
-- `static` on a function: `` `static` goes on a field; a function with
-  no `self` is a static ``.
+- A no-`self` function without the word: `` `new` takes no `self`; a
+  function of the type is written `static function new` `` (quickfix
+  `Add \`static\``).
+- `self` in a `static function`: `` `static function balance` takes
+  `self`; a method is written `function balance(self)` ``.
+- `static function` in a trait: `` a trait declares methods; a static
+  has no receiver ``.
 - `static` in an enum, interface, trait, or type: `` `static` belongs in
   a `struct` body ``.
 - `self.made`: `` `made` is a static of `Wallet`; write `Wallet.made` ``.
@@ -218,6 +254,15 @@ visible in the syntax and reachable across files, which is the point,
 and also a foot-gun for code that treated a file `local` as private by
 accident. `private static` is the answer for that code.
 
+Every impl written so far has static functions without the word, so
+every project gets a report per static on the day this lands. The
+report is one quickfix, `alloy flux --fix` applies it to a whole
+project in one run, and the emit does not change, so the migration is
+a diff of one word per static and nothing at runtime. The upstream
+watch matters here: Luau's class proposals (240, 242, 247) spell a
+class static with the same word, so an Alloy impl reads the way an
+upstream class will.
+
 A project that wrote `Wallet.made = 0` after the struct by hand keeps
 working: the emit is the same assignment. It gains a type and a hover
 by moving the line into the body.
@@ -227,10 +272,16 @@ by moving the line into the body.
 - Keep the convention: a `const` or `local` beside the struct, or a
   namespace. It works today and stays valid; it does not travel with
   the type across an import, and the reader has to know it.
-- `static function` as a required or optional word. It adds a word for
-  what the absence of `self` already says, and every static function
-  written so far would gain a diff. Rejected; the report on `static
-  function` names the rule.
+- Keep static functions unmarked, as today, and put `static` on
+  fields only. It saves one word per static and the migration diff;
+  it leaves the reader reading parameter lists, and a `self` typed by
+  mistake still turns a static into a method with no report. The
+  user's own read, on the day of the decision: the word belongs in
+  front of the function too, and a function with no `self` and no
+  word is an error.
+- Exempt `new` from the word, since every struct has one. One
+  exception to a one-word rule is the kind of thing a reader has to
+  learn; `static function new` reads fine and the fix writes it.
 - A `class` keyword with `static` inside it. Upstream Luau's class RFCs
   (240, 242, 247) may bring one; Alloy's `struct` plus `impl` is the
   shape now, and a static field on a struct maps onto a class static
@@ -247,12 +298,13 @@ by moving the line into the body.
   fields; associated functions without `self` called on the type.
   Alloy takes the constant and adds the field, since Luau has a live
   table to hold it and no ownership rules to forbid it.
-- Kotlin companion objects, Swift `static var` and `static let`, C#
-  and Java `static`: a keyword on the member, read as `Type.member`.
-  Alloy's `static` reads the same way on a field and is absent on a
-  function, where the signature already says it.
-- TypeScript: `static` on a class field or method. The field form
-  matches this proposal; the method form is the one Alloy declines.
+- Kotlin companion objects, Swift `static var`, `static let`, and
+  `static func`: a keyword on the member, read as `Type.member`.
+  Alloy's `static` reads the same way on a field and on a function.
+- TypeScript, Java, C#: `static` on a class field or method, called
+  on the type. This proposal reads the same on both, and adds the
+  report that TypeScript lacks: a function with no `this` is still a
+  method there, and a caller finds out at the call.
 - Lua and Luau: a "static" is a plain table member, `Wallet.made = 0`
   after the table. The emit is exactly that; the proposal gives it a
   place in the declaration, a type, and a name the editor knows.
