@@ -81,10 +81,19 @@ print(Wallet.made, Wallet.MAX)
 - `static name: T = value` in a struct body declares a static field.
   The type annotation and the initial value are both required: the
   value exists from the moment the type does, and there is no `self`
-  to fill it later.
-- `static const NAME: T = value` declares a static constant. The type
-  may be left off when the value is a literal, as for a file `const`.
-  A write to it is a `ConstError`.
+  to fill it later. `static` is contextual: it is a keyword only at
+  the start of a member line in a struct body or an impl body, so
+  `local static = 1` and a field named `static` stay valid Luau.
+- `static const NAME: T = value` declares a static constant. This is
+  new syntax: today `const` is a binding statement and nothing else
+  (the upstream `const` RFC is binding-only, and Alloy matches it),
+  so a `const` inside a struct body is a syntax error. The word
+  `static` is what opens the body to it: the parser reads `static` at
+  the start of a field line, then `const` as part of that member. The
+  type may be left off when the value is a literal, as for a file
+  `const`. A write to it is a `ConstError`. `const` alone in a struct
+  body stays an error, and the report names the form: `` a constant
+  of the type is written `static const MAX = 1000` ``.
 - `private static` and `private static const` are private to the
   struct's impls, as a private field is.
 - `static function name(...)` in an `impl` declares a static
@@ -226,6 +235,9 @@ follows for a static function:
 
 - `static made: number` with no value: `` a static needs a value: `static
   made: number = 0` ``.
+- `const MAX = 1000` in a struct body: `` a constant of the type is
+  written `static const MAX = 1000` `` (today a syntax error with no
+  guidance).
 - A no-`self` function without the word: `` `new` takes no `self`; a
   function of the type is written `static function new` `` (quickfix
   `Add \`static\``).
