@@ -1,6 +1,6 @@
 # Remove `global`
 
-**Status**: Accepted
+**Status**: Implemented
 
 ## Summary
 
