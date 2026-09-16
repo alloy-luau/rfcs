@@ -1,0 +1,32 @@
+# Tells the website to rebuild when an RFC lands on main.
+#
+# The site at alloy-luau/alloy-luau.github.io renders /rfcs from this
+# repository at build time. Its Pages workflow listens for the
+# `rfcs-updated` dispatch below, so a merge here shows on the site in a
+# few minutes instead of at the nightly build.
+#
+# SITE_DISPATCH_TOKEN goes in this repository, under
+# Settings > Secrets and variables > Actions. Use a fine-grained
+# personal access token with Contents: read and write on
+# alloy-luau/alloy-luau.github.io, or a classic token with `repo` scope.
+# Without the secret this workflow prints a notice and stops.
+name: Notify the site
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send the rfcs-updated dispatch
+        env:
+          GH_TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::SITE_DISPATCH_TOKEN is not set; the site rebuilds on its nightly schedule"
+            exit 0
+          fi
+          gh api repos/alloy-luau/alloy-luau.github.io/dispatches \
+            -f event_type=rfcs-updated
