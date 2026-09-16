@@ -1,8 +1,10 @@
 # Conditional attribute contracts
 
-Status: noted for later. The contract feature ships without this. The
-user asked for it on 2026-09-15 while writing a provider attribute, and
-this file holds the idea so the next design pass starts from it.
+**Status**: Noted for later
+
+The contract feature ships without this. The user asked for it on
+2026-09-15 while writing a provider attribute, and this file holds the
+idea so the next design pass starts from it.
 
 ## Summary
 
