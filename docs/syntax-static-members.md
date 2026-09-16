@@ -1,5 +1,7 @@
 # Statics: the `static` keyword for members of a type
 
+**Status**: Accepted
+
 ## Summary
 
 A type gains members that belong to it and not to a value, and one

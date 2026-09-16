@@ -1,5 +1,7 @@
 # Remove `global`
 
+**Status**: Accepted
+
 ## Summary
 
 `global` leaves the language. A `global local`, `global const`, `global

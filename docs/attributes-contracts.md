@@ -1,5 +1,7 @@
 # Attribute contracts
 
+**Status**: Implemented
+
 ## Summary
 
 An `attribute` declaration may state what the thing it sits on must
