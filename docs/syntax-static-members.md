@@ -21,7 +21,7 @@ instances made, a registry, a cap, a default. Today that value lives
 beside the type as a `const` or a `local`, or in a namespace, and the
 reader has to know the convention to find it:
 
-```
+```alloy
 local wallets_made = 0             -- belongs to Wallet, lives nowhere
 export const MAX_COINS = 1000      -- same
 
@@ -56,7 +56,7 @@ lets the reader and the compiler know at the declaration.
 
 ### What a user writes
 
-```
+```alloy
 export struct Wallet as
     coins: number = 0                 -- an instance field
     static made: number = 0           -- a static field, on the type
@@ -149,7 +149,7 @@ its class table on the `struct` line and blanks the field lines; a
 static's line writes the slot instead, so the emit stays on the
 source's own lines:
 
-```
+```luau
 local Wallet = {} Wallet.__index = Wallet ...   -- the struct line
                                                  -- coins: blank
 Wallet.made = 0                                  -- static made
@@ -160,7 +160,7 @@ Wallet.registry = {}                             -- private static
 The check artifact types the class table with the statics and keeps
 them out of the value type:
 
-```
+```luau
 type Wallet = { coins: number, balance: (self: Wallet) -> number }
 local Wallet: { made: number, read MAX: number, new: ..., ... } = ...
 ```
