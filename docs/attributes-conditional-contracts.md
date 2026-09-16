@@ -8,10 +8,11 @@ idea so the next design pass starts from it.
 
 ## Summary
 
-An attribute body may hold an `if` over the attribute's own arguments.
-The `requires` clauses inside it apply only when the condition holds.
-The compiler reads the condition from the literal arguments at the use
-site, the same way `each` reads a list today. Nothing runs.
+A `requires` clause may end in `where <condition>`, a condition over
+the attribute's own arguments. The clause applies only when the
+condition holds. The compiler reads the condition from the literal
+arguments at the use site, the same way `each` reads a list today.
+Nothing runs.
 
 ## Motivation
 
@@ -22,10 +23,7 @@ clause that depends on a flag:
 ```alloy
 attribute provider(lifecycles: Lifecycle[], dbgVal: boolean) on impl as
     requires private function each lifecycles (self)
-
-    if dbgVal then
-        requires private field test: number
-    end
+    requires private field test: number where dbgVal
 end
 ```
 
@@ -37,14 +35,19 @@ the member always, and the type carries a field it does not use.
 
 ### The condition
 
-The `if` inside an attribute body takes a condition over the
-attribute's parameters and literals only:
+`where` on a clause takes a condition over the attribute's parameters
+and literals only, the same word and the same shape as `for x in xs
+where cond` and `if local x = e where cond`:
 
-- a boolean parameter: `if dbgVal then`
-- a comparison of a parameter with a literal: `if mode == "server"
-  then`, `if count > 0 then`
+- a boolean parameter: `where dbgVal`
+- a comparison of a parameter with a literal: `where mode ==
+  "server"`, `where count > 0`
 - `not`, `and`, `or` over those
-- `else` and `elseif` as in a statement
+
+`where` sits last on the clause, after the member's shape. With
+`each` it reads per entry: `requires private function each
+lifecycles (self) where dbgVal` writes the clauses only when the flag
+is on.
 
 A parameter of list type may appear only as `#list` (the count) or in
 `each`. A call, an index, a table, or any name that is not a parameter
@@ -60,9 +63,9 @@ attribute's parameters and literals; `os.time()` is a call
 The arguments of an attribute use are literals the compiler reads
 today. So the compiler folds the condition at each use site: it
 substitutes the arguments, evaluates the comparison, and keeps the
-clauses of the branch that holds. The required set is then a plain
-list, and the existing check runs. This is a fold over constants, not
-an interpreter; the grammar above is small enough that the fold is a
+clauses whose condition holds. The required set is then a plain list,
+and the existing check runs. This is a fold over constants, not an
+interpreter; the grammar above is small enough that the fold is a
 match over five node kinds.
 
 A use site that gives no value for a parameter the condition reads
@@ -92,8 +95,6 @@ there.
 
 ## Drawbacks
 
-- `if` inside an attribute body is a second meaning for a statement
-  keyword. A reader may expect the branch to run.
 - The condition grammar is a subset the docs must draw a line around.
   Every extension of that subset is a step toward a type-level
   language, which the contracts RFC set aside on purpose ("No
@@ -107,10 +108,12 @@ there.
   contract in the second. Works today, no new syntax. Costs one name
   per flag and puts the flag in the attribute name instead of an
   argument.
-- `requires ... when <condition>` as a clause suffix instead of an `if`
-  block. One line per clause, no block, no `else`. Simpler to parse and
-  reads as a contract rather than as code. This is the form to weigh
-  first when the feature is picked up.
+- An `if dbgVal then ... end` block inside the attribute body, with
+  `else` and `elseif`. It groups several clauses under one condition,
+  but `if` inside a declaration reads as code that runs, and a block
+  needs `end` handling in a body that has none today. The `where`
+  suffix keeps one clause per line and reuses a word the language
+  already gives this meaning.
 - Do nothing: the framework checks at run time, which is the failure
   the contracts RFC exists to remove.
 
@@ -124,9 +127,8 @@ there.
 
 ## Unresolved questions
 
-- `if ... then ... end` block or `when` suffix on the clause.
-- Whether `each` may sit inside the block, and whether a block may sit
-  inside `each` (a clause per entry, each with its own condition).
+- Whether a condition may read the `each` entry (`where lifecycle ~=
+  Lifecycle.Init`), which needs the entry to have a name.
 - Whether a condition may read a struct field of a record argument
   (`if options.debug then`), which needs the record parameter shape
   from the contracts RFC's open question.
