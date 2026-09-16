@@ -1,6 +1,6 @@
 # `as` on a match scrutinee
 
-**Status**: Accepted
+**Status**: Implemented
 
 ## Summary
 
