@@ -63,6 +63,19 @@ Only a script kind takes the infix. A `ModuleScript` under an `Actor`
 is meaningless on its own, so `.actor.` on a module is an error that
 says to put it on the script that requires the module.
 
+One file gives one `Actor`. The infix takes no count. A pool is a
+tuning number that changes with the device and the load, and a number
+in a file name can only be changed by renaming the file. A pool is
+built at run time from the one the build writes, which is what the
+engine's own pattern does:
+
+```alloy
+for i = 1, workers do
+    local worker = template:Clone()
+    worker.Parent = folder
+end
+```
+
 ### `parallel do ... end`
 
 ```alloy
@@ -115,12 +128,25 @@ error(3.x): ParallelError: a `parallel` block cannot write
 `part.Position`; move the write after the block
 ```
 
-The compiler cannot see every violation, so this is a guard rail and
-not a proof. The docs must say so plainly.
+The check reads this file and no further. A call into another module
+is not followed, even one the project owns. A partial cross-module
+check would be less useful than a line a reader can hold: the compiler
+sees what the file says, and the engine has the last word. Whole
+program analysis is a separate proposal.
+
+So this is a guard rail and not a proof, and the docs must say that
+plainly rather than in a footnote.
 
 `await` inside a `parallel` block is an error: a Future resumes on the
 serial phase and the block would end somewhere the author did not
 write.
+
+`parallel` composes with `@cfg` and needs no rule of its own. A
+`@cfg(server)` on a statement guards whatever the statement is, a
+`parallel` block included, and the engine's phase rules are the same on
+both sides. The side a script runs on is already decided by the
+`.server.` or `.client.` infix beside `.actor.`, so there is nothing
+for a parallel block to decide again.
 
 ### `message`, a typed channel between actors
 
@@ -172,6 +198,11 @@ A message is the channel this proposal gives. `SharedTable` stays what
 it is today, a std type the author reaches for directly, because its
 semantics are the engine's and wrapping them would hide the cost. The
 docs point at it from the `parallel` topic.
+
+A `SharedTable` crosses a message like any other value, with no special
+handling. It is already shared by reference, so there is nothing to
+copy and nothing to serialize, and giving it a rule of its own would
+suggest Alloy manages its lifetime. It does not.
 
 ### The language server
 
@@ -226,14 +257,3 @@ docs point at it from the `parallel` topic.
   `message` declaration's shape.
 - Alloy: `remote`, which already turns one declaration into a typed
   channel with both ends generated.
-
-## Unresolved questions
-
-- Whether `.actor.` should also accept a count, so one file becomes a
-  pool of actors, which is the common pattern for work splitting.
-- Whether the write check should reach across a `require` inside the
-  same project, given that most engine writes live in a helper.
-- Whether `message` should carry a `SharedTable` argument specially,
-  since passing one is the way most real code shares state.
-- What `parallel` means inside a `@cfg` block, and whether a parallel
-  block on the client and the server should differ.
