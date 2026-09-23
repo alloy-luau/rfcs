@@ -1,6 +1,6 @@
 # Type negation with `~`
 
-**Status**: Accepted
+**Status**: Implemented
 
 ## Summary
 
@@ -95,29 +95,33 @@ Luau has no negation syntax. Its parser rejects `~number`:
 SyntaxError: Expected type, got '~'
 ```
 
-It does have the constructor, in the type function library. The std
-exports one type function:
+It does have the constructor, in the type function library. A file
+that writes a negation declares one type function on its first line,
+beside the runtime require:
 
 ```luau
-export type function neg(t)
-	return types.negationof(t)
-end
+type function __neg(t) return types.negationof(t) end
 ```
 
-and `~T` lowers to `__alloy.neg<T>`. Checked against the toolchain's
-own analyzer, both in one file and across a module boundary:
+and `~T` lowers to `__neg<T>`. The function sits in the file, not in
+the std. On luau-lsp 1.69.0 a type function exported from another
+module reaches the importer unchecked, so `L.neg<number>` accepted `5`.
+The same function declared in the file enforces:
 
 ```luau
 --!strict
-local L = require("./lib")
-local a: L.neg<number> = "text"   -- accepted
-local b: L.neg<number> = 5        -- rejected
+type function __neg(t) return types.negationof(t) end
+local a: __neg<number> = "text"   -- accepted
+local b: __neg<number> = 5        -- rejected
 ```
 
 ```
-TypeError: Expected this to be '~number', but got 'number';
-`number` cannot be `~number`
+TypeError: Expected this to be '~number', but got 'number'
 ```
+
+The compiler reports that last case in its own words: "`number` does
+not fit: the type asks for `~number`, so it takes anything but
+`number`".
 
 Two facts that make this work. The analyzer reduces the type function
 and then prints the result as `~number`, so a diagnostic names the type
@@ -133,6 +137,13 @@ The emit stays on the source's own line, because `~T` and
 Every type position: a binding, a parameter, a return, a field, a type
 alias, a union member, an intersection member, a generic argument, and
 a generic bound (`<T: ~nil>`).
+
+`types.negationof` negates a primitive, a singleton, a class, and a
+union of them. It fails on a table type and on a function type, so the
+compiler reports those operands before the analyzer runs: a table
+literal, an array, a std table type, a struct, and a function type.
+An alias of a record reaches the analyzer, whose report the compiler
+rewrites to the same words.
 
 Two positions reject it, each with its own report:
 
