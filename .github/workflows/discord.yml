@@ -1,0 +1,19 @@
+# Posts pushes and pull requests to the RFC channel through the shared
+# workflow in alloy-luau/alloy. The RFCs have a Discord webhook of their
+# own, RFC_DISCORD_WEBHOOK, which goes in under the name the shared
+# workflow reads.
+name: Discord
+
+on:
+  push:
+    branches: ["**"]
+  pull_request_target:
+    types: [opened, closed]
+
+permissions: {}
+
+jobs:
+  notify:
+    uses: alloy-luau/alloy/.github/workflows/discord.yml@main
+    secrets:
+      DISCORD_WEBHOOK: ${{ secrets.RFC_DISCORD_WEBHOOK }}
