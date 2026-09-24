@@ -138,7 +138,8 @@ value and never rebuilds it.
 ### Where it applies
 
 Every parameter list: a `local function`, a function expression, a
-method in an `impl`, a `macro`, and a `declare` block's signature. A
+method in an `impl`, a method signature and a default body in a
+`trait`, a `macro`, and a `declare` block's signature. A
 `remote` declaration takes no pattern, because the wire layout reads the
 parameter names; the error says so.
 
@@ -152,8 +153,14 @@ parameter names; the error says so.
   `z` ``, on the field's name.
 - A name after `...rest`: `` `...rest` takes the fields that are left;
   no name follows it ``.
-- A pattern on an optional parameter (`{ x }: Point?`): `` a pattern
-  needs a value; `Point?` may be nil ``.
+- A pattern on an optional parameter (`{ x }: Point?`, or
+  `{ x }: Point | nil`): `` a pattern needs a value; `Point?` may be
+  nil ``.
+- A type on the rest (`...rest: T`): `` `...rest` takes no type; the
+  annotation's index type is its type ``.
+- An array pattern with no annotation (`[first, second]`): `` `[first,
+  second]` has no type; annotate the parameter, `[first, second]: T[]`
+  ``.
 - A parameter pattern that binds a name the signature already binds:
   the ordinary duplicate-binding error.
 
