@@ -92,12 +92,12 @@ scroll, not a library to learn, so the names sit by subject:
 
 | module | holds |
 |---|---|
-| `@alloy/std/collections` | `HashMap`, `Set`, `Queue`, `Heap`, `Array`, `Symbol` |
+| `@alloy/std/collections` | `HashMap`, `Set`, `Queue`, `Heap`, `Array`, `Symbol`, `BitSet` |
 | `@alloy/std/iter` | `Iter` |
 | `@alloy/std/result` | `Result`, `Ok`, `Err` |
 | `@alloy/std/async` | `Future`, `Scope` |
 | `@alloy/std/signal` | `Signal`, `SignalConnection`, `Signalish` |
-| `@alloy/std/traits` | `Display`, `Debug`, `Clone`, `Eq`, `PartialEq`, `Ord`, `Add`, `Sub`, `Mul`, `Div` |
+| `@alloy/std/traits` | `Display`, `Debug`, `Clone`, `Default`, `Eq`, `PartialEq`, `Ord`, `Add`, `Sub`, `Mul`, `Div` |
 | `@alloy/std/serde` | `Serialize`, `Deserialize` |
 | `@alloy/std/types` | `Partial`, `Readonly`, `Sink` |
 | `@alloy/std/roblox` | `R15Character`, `R6Character`, `Attributes` |
@@ -157,8 +157,8 @@ and they stay ambient under every value of the option:
 | `==`, `<`, `+`, `-`, `*`, `/`, `tostring`, `clone` | the traits of `@alloy/std/traits` |
 
 The traits are in the table because they are the hooks the operators
-call. `@derive(Eq, Debug, Clone)` and a bound `<T: Ord>` need no import
-for the same reason. A name only the author writes is importable: the
+call. `@derive(Eq, Debug, Clone, Default)` and a bound `<T: Ord>` need
+no import for the same reason. A name only the author writes is importable: the
 collections, the signals, the iterators, the type utilities, and
 serde.
 
@@ -188,7 +188,7 @@ like any other. A file imports it the way it imports a type:
 import { Serialize, Deserialize } from "@alloy/std/serde"
 
 @derive(Serialize, Deserialize, Eq)
-struct Save as
+struct Save
     coins: number
 end
 

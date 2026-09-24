@@ -1,15 +1,16 @@
-# `Error`, `Exception`, `throw`, and `raise`
+# `Error`, `Exception`, and `throw`
 
 **Status**: Accepted
 
 ## Summary
 
-The std gains two types and the language gains two words. `Error` is a
+The std gains two types and the language gains one word. `Error` is a
 value a failure carries, built with `new Error("message")` and extended
 by any struct that implements the `Error` trait. `throw e` raises it,
 which `try do ... end` catches as an `Err`. `Exception` is the same
-shape for a condition that must be seen and must not stop the caller,
-and `raise e` reports one through `warn`.
+shape for a condition that must be seen and must not stop the caller.
+`warn(e)` reports one: its `__tostring` writes the name, the message,
+and the traceback, so Luau's own `warn` needs no new word beside it.
 
 ## Motivation
 
@@ -51,7 +52,7 @@ raised.
 The std declares a trait, so any type can be an error:
 
 ```alloy
-trait Error as
+trait Error
     function message(self): string
     function name(self): string
         return "Error"
@@ -65,7 +66,7 @@ end
 and a struct that implements it, for the common case:
 
 ```alloy
-export struct Error as
+export struct Error
     message: string
     read name: string = "Error"
     read traceback: string? = nil
@@ -83,11 +84,11 @@ Two ways, and the second is the one to teach.
 A struct that implements the trait is an error:
 
 ```alloy
-struct NotFound as
+struct NotFound
     key: string
 end
 
-impl Error for NotFound as
+impl Error for NotFound
     function message(self): string
         return `no entry for {self.key}`
     end
@@ -101,7 +102,7 @@ end
 A struct that holds an `Error` reuses its fields:
 
 ```alloy
-struct HttpError as
+struct HttpError
     inner: Error
     status: number
 end
@@ -144,30 +145,31 @@ Error("empty input")`
 The fix wraps a string operand, since that is the mistake a reader of
 other languages makes first.
 
-### `raise`
+### Reporting an `Exception`
 
 ```alloy
-raise new Exception("asset 12345 is missing; using the default")
+warn(new Exception("asset 12345 is missing; using the default"))
 ```
 
-`raise` reports and continues. The value reaches `warn` with its name,
-its message and its traceback, and the statement's own value is
-nothing, so `raise` is a statement and not an expression.
+`warn` reports and continues, as it does today. `Exception` carries a
+`__tostring`, so the line `warn` prints holds the name, the message and
+the traceback. No keyword is needed: the call is the one Roblox code
+already writes, and a value that is not an `Exception` prints the way
+it always did.
 
 `Exception` is the `Error` shape under another name, with its own trait
 so the two never mix:
 
 ```alloy
-export struct Exception as
+export struct Exception
     message: string
     read name: string = "Exception"
     read traceback: string? = nil
 end
 ```
 
-`throw` on an `Exception`, and `raise` on an `Error`, are each an error
-that names the other word. The pair is the point: the type says which
-one the author meant, and the compiler holds them apart.
+`throw` on an `Exception` is an error that names `warn`. The type says
+which one the author meant, and the compiler holds them apart.
 
 ### Emit
 
@@ -181,15 +183,9 @@ The level is `0`, because the value already carries the traceback from
 its own construction, and Luau's own prefix would name the `throw` line
 twice.
 
-`raise`:
-
-```luau
-warn(__alloy.exception_text(value))
-```
-
-`exception_text` is one std function: it reads `name`, `message` and
-`traceback` off the value and returns the line `warn` prints. The emit
-stays on the source's own line, as every Alloy statement does.
+`warn(e)` emits as written. `Exception.__tostring` is one std
+function: it reads `name`, `message` and `traceback` off the value and
+returns the line `warn` prints.
 
 `try do ... end` needs no change. Its `xpcall` already catches the
 throw, and the std bridge already keeps `{ err = e, trace = ... }`. A
@@ -218,17 +214,12 @@ it. That is the reason to have types rather than strings.
 
 - Completion after `throw ` offers the error types in scope, and
   `new Error(` first.
-- Completion after `raise ` offers the exception types.
-- A hover on `throw` and on `raise` says which type each takes and
-  which one catches.
+- A hover on `throw` says which type it takes and which one catches.
 - The unreachable code after a `throw` greys the way it does after a
   `return`.
 
 ## Drawbacks
 
-- Two words for one idea, and a reader of Python reads `raise` as the
-  one that unwinds. It is the opposite here. This is the proposal's
-  real cost, and the Alternatives name the other spellings.
 - A second failure path beside `Result`. The rule that keeps them one
   path: a function that can fail in a way the caller should handle
   returns `Result`; a `throw` is for the failure no local caller can
@@ -241,13 +232,19 @@ it. That is the reason to have types rather than strings.
 
 ## Alternatives
 
-- `throw` alone, with no `raise`. `warn` already exists and takes a
-  string. It loses the kind and the collectable report, which is the
-  reason the second word is here.
-- `panic` and `warn` as the two words. `panic` says "does not return"
-  to a reader of Rust or Go, and `warn` is the Luau name already. This
-  is the spelling to take if the Python reading of `raise` proves to be
-  a real trip hazard in practice.
+- A `raise` statement for the `Exception`, beside `throw`. It was the
+  first draft. A reader of Python reads `raise` as the word that
+  unwinds, the opposite of what it did here, and `warn` already reports
+  a value whose `__tostring` writes the report.
+- `panic` for the word that unwinds. It says "does not return" to a
+  reader of Rust or Go. `throw` pairs with `try` and `Error` the way a
+  TypeScript reader knows them, and the request came from that reader.
+- `throw "text"` as sugar for `throw new Error("text")`. It reads well,
+  and it weakens the type rule that makes the feature worth having. The
+  report's fix writes the wrapper instead.
+- `Result<T, E>` bounding `E` to `Error` by default. It would make the
+  two paths one, and it would break every `Result<T, string>` written
+  today.
 - `Error` as a `class`, per the classes RFC, with `extends` for the
   subtypes. It reads like TypeScript, which is what the request asked
   for. It waits on a feature that does not compile yet, and a trait
@@ -262,21 +259,8 @@ it. That is the reason to have types rather than strings.
   trait is the same idea without the hierarchy.
 - Rust: `Result` plus the `Error` trait, and `panic!` for what no
   caller answers. The split proposed here is that split.
-- Python: `raise` unwinds and `warnings.warn` reports. The word means
-  the opposite of this proposal, which is the naming hazard above.
+- Python: `raise` unwinds and `warnings.warn` reports. The first draft
+  of this proposal used `raise` to report, the opposite reading, which
+  is why the word is gone.
 - Luau: `error(value, level)` takes any value, and `pcall` returns it.
   `throw` is that call with a type on the value.
-
-## Unresolved questions
-
-- Whether `throw` may take a bare string as sugar for
-  `new Error(string)`. It reads well and it weakens the type rule that
-  makes the feature worth having.
-- Whether `raise` should also return the value, so a caller can count
-  the conditions a session reported.
-- Whether a `Result<T, E>` should bound `E` to `Error` by default. It
-  would make the two paths one, and it would break every
-  `Result<T, string>` written today.
-- Whether an unhandled `throw` at the module top level should name the
-  module in its report, the way the `try` doc says a top-level `try`
-  yields the `Err` from the chunk.
