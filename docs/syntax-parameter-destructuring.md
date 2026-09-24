@@ -1,6 +1,6 @@
 # Parameter destructuring
 
-**Status**: Accepted
+**Status**: Implemented
 
 ## Summary
 
