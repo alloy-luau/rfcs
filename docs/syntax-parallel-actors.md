@@ -1,6 +1,6 @@
 # Parallel Luau: actor scripts, `parallel` blocks, and typed messages
 
-**Status**: Accepted
+**Status**: Noted for later
 
 ## Summary
 

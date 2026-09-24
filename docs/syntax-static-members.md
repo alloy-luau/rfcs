@@ -1,6 +1,6 @@
 # Statics: the `static` keyword for members of a type
 
-**Status**: Accepted
+**Status**: Noted for later
 
 ## Summary
 
