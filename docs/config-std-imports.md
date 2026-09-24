@@ -4,20 +4,21 @@
 
 ## Summary
 
-The std stays ambient by default. A project that wants the opposite
-asks for it: `[std] globals = "none"` in `alloy.toml` turns the ambient
-names off, and a file then writes
+A file imports the std names it uses:
 `import { HashMap, Set } from "@alloy/std/collections"`. The std is
-laid out in modules by subject, with `@alloy/std` re-exporting all of
-them, so a file may import from the group or from the one name. The
-option also takes a list, so a project keeps the few names it wants
-everywhere and imports the rest. A project that sets nothing reads
-exactly as it does today, and the emit does not change in any case.
+laid out in modules by subject, and `@alloy/std` re-exports all of
+them. The names the language owns stay ambient: `Future`, `Result`,
+`Ok`, `Err`, `Array`, and the operator traits. A project that wants
+more ambient names says so: `[std] globals = "all"` makes every std
+name ambient, and a list, `globals = ["Signal", "Iter"]`, makes those
+names ambient. `Serialize` and `Deserialize` move to
+`@alloy/std/serde`, and `@derive` takes them as imported names. The
+emit does not change in any case.
 
 ## Motivation
 
-Every std name is ambient today. `HashMap`, `Queue`, `Iter`, `Result`,
-`Ok`, `Err`, `Signal` and about fifteen more are in scope in every
+Every std name was ambient. `HashMap`, `Queue`, `Iter`, `Result`,
+`Ok`, `Err`, `Signal` and about fifteen more were in scope in every
 file, with no line saying so:
 
 ```alloy
@@ -58,41 +59,53 @@ turning it off costs nothing at run time.
 
 ```toml
 [std]
-# "all" (the default), "none", or a list of names to keep ambient.
+# "none" (the default), "all", or a list of names to keep ambient.
 globals = "none"
 ```
 
 Three values:
 
-- `"all"`, the default and today's behavior. Every std name is ambient.
-- `"none"`. No std name is ambient. A file imports what it uses.
-- A list, `["Result", "Ok", "Err"]`. Those names stay ambient and every
-  other std name needs an import.
+- `"none"`, the default. A file imports each std name it uses, except
+  the names the language owns.
+- `"all"`. Every std name is ambient, the behavior before this
+  proposal.
+- A list, `["Signal", "Iter"]`. Those names are ambient too, and every
+  other std name needs an import. A name that is not a std name is an
+  error when the config loads, and the error lists the std names.
 
-The list is the value to teach. It names what a project treats as part
-of its own vocabulary, a `Signal` in a game built on events, an `Iter`
-in one built on pipelines. It does not have to name the language's own
-types, which the next section keeps ambient whatever the option says.
+The list is the value to teach for a project that wants a few names
+everywhere. It names what the project treats as its own vocabulary, a
+`Signal` in a game built on events, an `Iter` in one built on
+pipelines. It never has to name the language's own names, which the
+next sections keep ambient.
+
+The option sits in its own `[std]` table rather than in `[emit]`,
+because it changes name resolution and not the emit. `alloy init`
+writes `globals = "none"`, so a new project shows the key.
+
+A file outside any project reads the default, `"none"`.
 
 ### The modules
 
-The std has about fifty exported names. One module holding all of them
-is a list to scroll, not a library to learn, so the names sit in
-modules by subject:
+The std has nine modules. One module holding every name is a list to
+scroll, not a library to learn, so the names sit by subject:
 
 | module | holds |
 |---|---|
-| `@alloy/std/collections` | `HashMap`, `Set`, `Queue`, `Heap`, `Array`, `ReadArray`, `WriteArray`, `Container` |
-| `@alloy/std/iter` | `Iter`, `Iter2`, `Iter3` |
-| `@alloy/std/result` | `Result`, `Ok`, `Err`, and the result methods |
-| `@alloy/std/async` | `Future`, `Awaitable`, `Settled`, `Scope` |
-| `@alloy/std/signal` | `Signal`, `SignalConnection`, `Signalish`, `Sink` |
-| `@alloy/std/traits` | `Add`, `Sub`, `Mul`, `Div`, `Eq`, `PartialEq`, `Ord`, `Clone`, `Debug`, `Display`, `Serialize`, `Deletable`, `Destroyable` |
-| `@alloy/std/types` | `Partial`, `Readonly`, and the other type utilities |
-| `@alloy/std/roblox` | `R15Character`, `R6Character`, `Remote`, `RemoteSpec`, `RemoteCalls`, `Attribute` |
+| `@alloy/std/collections` | `HashMap`, `Set`, `Queue`, `Heap`, `Array`, `Symbol` |
+| `@alloy/std/iter` | `Iter` |
+| `@alloy/std/result` | `Result`, `Ok`, `Err` |
+| `@alloy/std/async` | `Future`, `Scope` |
+| `@alloy/std/signal` | `Signal`, `SignalConnection`, `Signalish` |
+| `@alloy/std/traits` | `Display`, `Debug`, `Clone`, `Eq`, `PartialEq`, `Ord`, `Add`, `Sub`, `Mul`, `Div` |
+| `@alloy/std/serde` | `Serialize`, `Deserialize` |
+| `@alloy/std/types` | `Partial`, `Readonly`, `Sink` |
+| `@alloy/std/roblox` | `R15Character`, `R6Character`, `Attributes` |
 
-A name in this table may also be one the language owns; the next
-section says which, and those stay ambient whatever the option says.
+A name sits in one module. `Sink` is a mapped type, the write half of
+`Readonly`, so it sits with the type utilities and not with the
+signals. The table lists the names a source can write; a type the
+runtime uses on its own, such as `Awaitable`, has no entry.
 
 `@alloy/std` re-exports every module, so a file may name the group or
 name the library:
@@ -100,7 +113,7 @@ name the library:
 ```alloy
 import { HashMap, Set } from "@alloy/std/collections"
 import { Signal } from "@alloy/std/signal"
-import type { Result } from "@alloy/std/result"
+import type { Partial } from "@alloy/std/types"
 
 -- The same names, through the facade.
 import { HashMap, Signal } from "@alloy/std"
@@ -108,45 +121,88 @@ import { HashMap, Signal } from "@alloy/std"
 
 The grouped form is the one to teach, because it says what a name is
 for. The facade exists so a file with four names from four modules is
-one line, and so a project that moves to `globals = "none"` has one
-spec to rewrite to rather than eight.
+one line.
+
+### The forms an import takes
+
+Every import form a module takes works on the std:
+
+- A list, `import { HashMap }`, binds each name under its own name.
+- An alias, `import { HashMap as Map }`, binds the alias. `Map` then
+  reads as the value and as the type, `Map<string, number>`.
+- A star import, `import * as c from "@alloy/std/collections"`, binds
+  the module. `c.HashMap.new()` and `c.HashMap<K, V>` both work, and
+  `c.Signal.new<<number>>()` takes its type pack as the bare form does.
+- A type import, `import type { Partial }`, reads the same way.
+
+A default import, `import std from "@alloy/std"`, is an error: the std
+has no default export, and the report names the star form.
+
+A std import is allowed under every value of the option. Under `"all"`
+it adds nothing, and a file that wants to be explicit may write it.
+An unused std import draws `unused_import`, as any import does.
 
 ### The names the language owns
 
-A keyword emits std types the author never writes. `remote Ping() from
-client` emits a value typed `RemoteSpec`; an `async function` emits a
-`Future`; `attribute tag on function` emits an `Attribute`; `try do
-... end` yields a `Result`. Asking a file to import a name it never
-typed, for a keyword it did, would be absurd.
+A keyword or an operator writes std names the author never types, and
+a failure idiom reads them back. Asking a file to import a name for a
+keyword it wrote would be absurd, so these names are the language's,
+and they stay ambient under every value of the option:
 
-So those names are the language's, not the library's. They stay ambient
-under every value of the option, `"none"` included:
-
-| keyword | the names it owns |
+| written by | the names |
 |---|---|
-| `remote` | `Remote`, `RemoteSpec`, `RemoteCalls` |
-| `async`, `await` | `Future`, `Awaitable`, `Settled` |
-| `attribute` | `Attribute` |
+| `async`, `await` | `Future` |
 | `try`, and a `Result` return | `Result`, `Ok`, `Err` |
+| `[ ]` literals and `T[]` types | `Array` |
+| `==`, `<`, `+`, `-`, `*`, `/`, `tostring`, `clone` | the traits of `@alloy/std/traits` |
 
-The rule behind the table: a name the compiler emits for a keyword is
-ambient, and a name only the author writes is importable. A project
-that sets `globals = "none"` still writes `remote Ping() from client`
-and still reads `Ok(v)` out of a `try`, with no import line for either.
+The traits are in the table because they are the hooks the operators
+call. `@derive(Eq, Debug, Clone)` and a bound `<T: Ord>` need no import
+for the same reason. A name only the author writes is importable: the
+collections, the signals, the iterators, the type utilities, and
+serde.
 
-`Ok` and `Err` are in the table because `try do ... end` produces them
-and a `match` reads them. That is the failure idiom the earlier section
-suggested a project would list by hand; it is not a choice, it is the
-language.
+The owned names are still importable from their module, for a file
+that prefers to be explicit.
 
-These names are still importable from their module, for a file that
-prefers to be explicit. The import is allowed and adds nothing, the way
-an import under `"all"` does.
+### Serialize and Deserialize
+
+`@derive(Serialize)` wrote both directions: `to_table`, `serialize`,
+and `from_table`. The two halves now split, the way Rust's serde
+splits them:
+
+- `@derive(Serialize)` writes `to_table` and `serialize`. `serialize`
+  is what a `T: Serialize` bound asks for.
+- `@derive(Deserialize)` writes `from_table`, which builds the struct
+  from the table `Serialize` writes.
+
+A struct that round-trips derives both. A field whose type is a struct
+of the file that derives the same half goes through that struct's own
+function, so the table nests on the way out and the metatable comes
+back on the way in. `@rename` and `@skip` apply to both halves.
+
+Both names live in `@alloy/std/serde`, and a derive argument is a name
+like any other. A file imports it the way it imports a type:
+
+```alloy
+import { Serialize, Deserialize } from "@alloy/std/serde"
+
+@derive(Serialize, Deserialize, Eq)
+struct Save as
+    coins: number
+end
+
+local function store<T: Serialize>(value: T) return value:serialize() end
+```
+
+So the answer to "how does a derive argument get imported" is the
+answer for every other name: an import binds it, and a user trait that
+the derive can write is imported from its own module the same way.
 
 ### What the modules cost
 
-Nothing at run time. Every spec here lowers to the same require the
-emit already writes, whichever module the name came from:
+Nothing at run time. A std import writes no `require`: the name renders
+as `__alloy.Name` wherever it stands, the way an ambient name does.
 
 ```alloy
 import { HashMap } from "@alloy/std/collections"
@@ -161,9 +217,8 @@ local __alloy = require("@alloy") local m = __alloy.HashMap.new()
 So the layout is a naming device. The compiler holds one table from
 name to module, the modules resolve to no path on disk, and two files
 that import one name through different specs produce identical output.
-
-A type import costs nothing at run time either, and follows the
-project's existing `erase_type_imports` setting.
+A star import writes one `require` of the runtime, the module the file
+already requires.
 
 The prefix is `@alloy/std` rather than `@alloy` so the toolchain keeps
 room for a surface that is not the library, `@alloy/testing` for the
@@ -171,12 +226,11 @@ assert macros, for example.
 
 ### The report
 
-Under `globals = "none"`, a std name with no import reads as an unknown
-name, with the import to write:
+A std name that the file does not reach reports once per name, at its
+first use, with the line to write:
 
 ```
-error(3.2): UnknownName: `HashMap` is a std type; write
-`import { HashMap } from "@alloy/std/collections"`
+error(3.2): ImportError: `HashMap` is in the std; write `import { HashMap } from "@alloy/std/collections"`
 ```
 
 The message names the import rather than saying the name is unknown,
@@ -186,22 +240,24 @@ the right module, and it means a name imported from the wrong one is
 its own report:
 
 ```
-error(3.2): UnknownName: `@alloy/std/collections` has no `Signal`; it
-is in `@alloy/std/signal`
+error(3.2): ImportError: "@alloy/std/collections" has no `Signal`; it is in "@alloy/std/signal"
 ```
 
-`alloy flux --fix` writes both, and the editor offers them as a quick
-fix beside the type auto-import quickfix that already exists.
-
-A name that is ambient under the project's list draws no report.
+A module the std does not have lists the ones it has. A name that is
+ambient under the project's option draws no report.
 
 ### Migration
 
-`alloy flux --fix` on a project that has just set `globals = "none"`
-adds every missing import, one line per file, sorted and merged with
-the file's existing imports. That is the same rewrite the auto-import
-quickfix performs, applied to the whole project, so switching the
-option is one command rather than a hand edit per file.
+`alloy flux --fix` and `alloy lint --fix` write every missing import.
+A name joins an `import { } from` list the file already has for the
+facade or for its module, and the rest go on new lines below the last
+import, one line per module. A project that updates the compiler runs
+the command once. A project that wants the old behavior sets
+`globals = "all"`.
+
+A struct that derived `Serialize` and read its value back with
+`from_table` adds `Deserialize`. The type checker reports the missing
+`from_table`, so the gap is visible.
 
 The option is per project. A library and the game that uses it may
 disagree, because the setting decides how a file is written, not what
@@ -209,29 +265,40 @@ the build produces.
 
 ### The language server
 
-- Under `"none"`, completion still offers every std name, and accepting
-  one inserts its import, the way a type auto-import does now.
-- A hover on an imported std name reads its doc, unchanged.
-- Under a list, the ambient names complete with no import and the rest
-  complete with one, so the list is visible in the editor rather than
-  only in the file.
+- A std name in a completion list names its module in its detail,
+  `alloy:std:collections`. Where the file does not reach the name,
+  accepting it writes its import.
+- `@derive(` offers `Serialize` and `Deserialize` with their
+  `@alloy/std/serde` import, and the owned traits with none. The
+  attribute list after `@` stays the list for the target below it.
+- Inside `from "@alloy/std/"` the list is the modules, and inside the
+  braces of a std import it is the names that module holds.
+- The report takes a quick fix that writes its import, and a file with
+  several missing names takes one action that writes them all.
+- A type hint that names a std type the file does not reach writes the
+  import with the annotation, so the accepted text compiles.
+- A hover on an imported std name reads its std doc, the same as an
+  ambient one.
 
 ## Drawbacks
 
-- Two ways to read the same program. A reader of one project sees
-  `HashMap` bare and of another sees it imported. The default keeps
-  today's behavior, so the split only exists where a project asked for
-  it.
-- More lines. A file that uses four std names gains an import line, and
-  a project that sets `"none"` gains one in most files.
+- A breaking default. Every file written before this proposal that
+  uses a library name bare stops compiling until it imports the name.
+  `alloy flux --fix` is the one command that fixes a project, and
+  `globals = "all"` keeps the old behavior for a project that wants it.
+- More lines. A file that uses four std names gains an import line.
 - A setting that changes what compiles. A file copied between two
   projects may stop compiling, and the report above is what it gets.
-- The list value needs a decision per project, and a project that picks
-  badly gets churn later when it changes its mind. `alloy flux --fix`
-  covers the change in both directions.
+- The serde split breaks a struct that derived `Serialize` and read
+  back with `from_table`. The type checker names the missing function.
 
 ## Alternatives
 
+- Keep the std ambient by default and let a project opt out with
+  `globals = "none"`. It breaks no existing file. It also keeps every
+  cost in the Motivation for every project that does not know the
+  option exists, and a library name taken by default is the problem
+  this proposal exists to fix.
 - `import { HashMap } from "@alloy"`, with no `/std`. It is the module
   the emit already requires, so it is one fewer idea. It leaves no room
   for a second surface and it reads as the toolchain rather than the
@@ -246,40 +313,21 @@ the build produces.
 - A per-file directive, `--@alloy-no-globals`, instead of a project
   setting. It makes the choice local, and it puts a compiler flag in
   every file of a project that wants it everywhere.
-- Drop the ambient names outright, with no option. It is the cleaner
-  language and it breaks every file written so far.
-- Keep only the option to shadow, so a project's own `Signal` wins over
-  the std one silently. That is the behavior this proposal exists to
-  make visible.
+- Keep one `Serialize` that writes both directions. It is less typing,
+  and it hides the direction a struct supports. A payload that only
+  goes out, or a table that only comes in, says so under the split.
+- Import the operator traits too. It is the stricter rule, and it asks
+  for an import for `==` on a struct, which a reader never connects to
+  a library name.
 
 ## Prior Art
 
 - Rust: `std::collections::HashMap` groups by subject, and a small
-  prelude is ambient. This proposal is that shape, with the prelude
-  chosen per project rather than by the language.
+  prelude is ambient. This proposal is that shape: the prelude is the
+  names the language owns, and a project may widen it. serde splits
+  `Serialize` and `Deserialize` the same way.
 - Python: no ambient library; every name is an import, and builtins are
   the fixed small set.
 - Go: no ambient library, and an unused import is an error.
 - Luau and Roblox: globals are ambient and a script cannot opt out,
-  which is the state Alloy inherits and this proposal makes a choice.
-
-## Unresolved questions
-
-- Which names a project should keep ambient when it writes a list. The
-  default stays `"all"`, so this is guidance for the docs rather than a
-  change to the language.
-- Where a name belongs when two modules could hold it. `Attribute` is
-  Roblox metadata and also compiler metadata; `Sink` is a signal and
-  also a collection. The table above makes a call on each, and the
-  first project to disagree is the evidence to move one.
-- Whether a module may be imported whole, `import * as collections
-  from "@alloy/std/collections"`, which the language already spells for
-  any other module.
-- Whether an unused std import should draw the existing
-  `unused_import` lint, which would make a copied file noisy while it
-  is being adapted.
-- Whether `@alloy/std` should also be importable under `"all"`, so a
-  file may be explicit in a project that does not require it. Allowing
-  it costs nothing and gives one name two spellings in one project.
-- Whether the setting belongs in `[std]` or in the existing `[emit]`
-  table, given that it changes name resolution and not the emit.
+  which is the state Alloy inherited and this proposal replaces.
