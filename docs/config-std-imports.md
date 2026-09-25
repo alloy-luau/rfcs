@@ -98,7 +98,7 @@ scroll, not a library to learn, so the names sit by subject:
 | `@alloy/std/async` | `Future`, `Scope` |
 | `@alloy/std/signal` | `Signal`, `SignalConnection`, `Signalish` |
 | `@alloy/std/traits` | `Display`, `Debug`, `Clone`, `Default`, `Eq`, `PartialEq`, `Ord`, `Add`, `Sub`, `Mul`, `Div` |
-| `@alloy/std/serde` | `Serialize`, `Deserialize` |
+| `@alloy/std/serde` | `Serialize`, `Deserialize`, and the attributes `rename`, `rename_all`, `skip`, `deny_unknown_fields` |
 | `@alloy/std/types` | `Partial`, `Readonly`, `Sink` |
 | `@alloy/std/roblox` | `R15Character`, `R6Character`, `Attributes` |
 
@@ -133,6 +133,10 @@ Every import form a module takes works on the std:
 - A star import, `import * as c from "@alloy/std/collections"`, binds
   the module. `c.HashMap.new()` and `c.HashMap<K, V>` both work, and
   `c.Signal.new<<number>>()` takes its type pack as the bare form does.
+  The local reaches the names its module exports and no more:
+  `c.Signal` reports that `Signal` is in `@alloy/std/signal`, and a
+  helper of the runtime, such as `try_block`, reports as no name of the
+  std. Completion after `c.` lists the same names.
 - A type import, `import type { Partial }`, reads the same way.
 
 A default import, `import std from "@alloy/std"`, is an error: the std
@@ -198,6 +202,26 @@ local function store<T: Serialize>(value: T) return value:serialize() end
 So the answer to "how does a derive argument get imported" is the
 answer for every other name: an import binds it, and a user trait that
 the derive can write is imported from its own module the same way.
+
+The options the serde derives read are std names of the same module:
+`@rename`, `@rename_all`, `@skip`, and `@deny_unknown_fields`. Each one
+needs its import, as `Serialize` does, and `alloy flux --fix` writes
+it. A star import reaches the options and the derives through the
+module:
+
+```alloy
+import * as serde from "@alloy/std/serde"
+
+@derive(serde.Serialize, serde.Deserialize)
+@serde.deny_unknown_fields
+struct Save
+    @serde.rename("hp")
+    health: number
+end
+```
+
+`@alias` stays built in. It gives a field a second key that reads and
+writes the same slot, which a struct does with or without serde.
 
 ### What the modules cost
 
@@ -289,6 +313,9 @@ the build produces.
 - More lines. A file that uses four std names gains an import line.
 - A setting that changes what compiles. A file copied between two
   projects may stop compiling, and the report above is what it gets.
+- The serde options need an import where they were built in, so a
+  file that used `@rename` with no import reports until it adds one.
+  The report carries the fix.
 - The serde split breaks a struct that derived `Serialize` and read
   back with `from_table`. The type checker names the missing function.
 
