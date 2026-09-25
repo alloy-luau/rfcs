@@ -137,6 +137,33 @@ has one form. The editor indents after a header with no `as`. A body on
 the header's line with no `as` still reports ``needs `as` before its
 body``, and the quick fix writes it.
 
+`as` before a body on the next line is the style lint `redundant_as`,
+so each layout has one spelling: `as` joins a header to a body on the
+same line, and a line break opens a body below. `alloy fmt` and `alloy
+flux --fix` drop the word.
+
+### Imports resolve in place
+
+An `import` lowers to a `require` on its own line, as Luau reads a
+`require`. One inside a function or a `do` block binds its names for
+that scope alone:
+
+```alloy
+local function open_menu()
+    import { Menu } from "./ui/menu"
+    Menu.open()
+end
+```
+
+The `import_order` lint, which asked for every import at the top of
+the file, is gone.
+
+### `@deprecated` takes Luau's table
+
+`@deprecated("why")` takes a message, and `@deprecated({ use = "mix",
+reason = "renamed" })` takes the table Luau's own list takes, so the
+lint at each call names the function to use instead.
+
 ### Guards
 
 A guard is written `where`, the word a `for` filter takes:
