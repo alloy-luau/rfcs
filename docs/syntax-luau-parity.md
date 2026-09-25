@@ -11,8 +11,9 @@ away from their declarations. `[[ ... ]]` is a long string. A
 declaration header needs no `as` when its body starts on the next line.
 A match guard is written `where`. A catch-all arm counts toward an
 exhaustive match, a value name in a pattern reports, and `in` on a
-`{ }` literal with items reports. `@allow` also takes the rustc and
-Clippy names of the lints Alloy has.
+`{ }` literal with items reports. An arm can run statements before
+its value, and `return` in it leaves the function. `@allow` also takes
+the rustc and Clippy names of the lints Alloy has.
 
 ## Motivation
 
@@ -148,22 +149,70 @@ end
 ```
 
 `and` still parses. The style lint `match_guard_and` reports it, and
-`alloy flux --fix` writes `where`.
+`alloy flux --fix` writes `where`. The spellings of other languages
+report with the Alloy form: an `if` guard names `where`, `case A | B`
+names `or`, and `Ok(v) => f(v)` names `case Ok(v) then`.
 
 ### Patterns
 
 A binding or `_` after literal arms makes the match exhaustive. A
 guarded arm still proves nothing.
 
-A bare name in a pattern binds a new name. When the name is a local in
-scope or is in SCREAMING_CASE, the author meant the value, so it is an
-error:
+A bare name in a pattern binds a new name. When the name is in
+SCREAMING_CASE, the author meant a constant, so it is an error. A
+lowercase local in scope is the lint `pattern_shadows_local`, because
+binding over a local is sometimes meant:
 
 ```
 error(4.2): ExhaustiveMatch: `MAX` names a value, and a bare name in a
 pattern binds a new one, so this arm takes every value; compare in a
 guard: `case n where n == MAX`
 ```
+
+### Arms that run statements
+
+An arm of a match that gives a value can run statements first. The
+last line of the arm is its value, as in a Rust block:
+
+```alloy
+local label = match score with
+    case 0 then "none"
+    default
+        print(score)
+        tostring(score)
+end
+```
+
+`return` leaves the nearest function body, `try do`, or `async do`. It
+never leaves an arm. So in an arm, `return nil` leaves the function
+around the match, and `break` and `continue` go to the loop around it.
+One word keeps one meaning.
+
+Luau has no expression that runs a statement. A match with such an arm
+therefore stands in three places: after `local x =`, after `x =`, and
+after `return`. The compiler moves each arm into that statement, and
+every line stays where it is:
+
+```luau
+local label do local _m1 = score
+    if _m1 == 0 then label = "none"
+    else
+        print(score)
+        label = tostring(score)
+end end
+```
+
+In any other place the match is an error that says to bind it to a
+local first. An arm that ends in a statement other than `return`,
+`break`, or `continue` reports `this arm gives no value`.
+
+In a value block (an arm, `try do`, or `async do`), a line that starts
+with `(`, `[`, `{`, `-`, or a string starts the value. It does not
+continue the line above. Luau already refuses the `(` case as
+ambiguous. The last line of a `try do` or an `async do` is its value
+when it is an expression, and a call counts. Each of the two bodies runs
+in a function of its own, so `...`, `break`, and `continue` inside it
+are errors.
 
 ### `in` on a table literal
 
@@ -199,11 +248,17 @@ and `clippy.` is a tool prefix like `flux.`:
 
 - `[[1, 2], [3]]` was a nested array and is now a long string. No file
   in the examples, the ingots, or the two games in the test bed wrote
-  it; the docs did, and they now write `[ [1, 2], [3] ]`. A file that
-  wrote it gets a string, and the type checker reports its first use as
-  an array.
+  it; the docs did, and they now write `[ [1, 2], [3] ]`. The lint
+  `array_long_string` reports a long string whose text reads like
+  arrays, and `alloy flux --fix` writes the array form.
 - Two spellings of a header and of a guard. The formatter writes one
   header form, and the lint rewrites the old guard.
+- In a value block a new line decides where a value starts: `-y`
+  under a call is a value, not a subtraction. Luau reads a file the
+  same with or without its line breaks, except for the `(` case it
+  refuses.
+- A match whose arms run statements stands in three places only.
+  Inside a call it reports, and the fix is one local.
 - A file that used one of the eight words as a name now compiles, so a
   typo such as `trait` alone on a line reads as a name and reports as
   an unknown global rather than a missing declaration.
@@ -220,6 +275,16 @@ and `clippy.` is a tool prefix like `flux.`:
   `case MAX` then has to know whether `MAX` is a const, a local, or a
   new name, and the case of one letter decides it. An error with the
   guard in it says what the line does.
+- Keep one expression per arm. A value that needs a `print` first then
+  needs a local function or an `if` chain, and the match stops being
+  the one place the cases live.
+- A word for the arm value, such as `yield v`. It adds a keyword for
+  one place, and `yield` already names a coroutine yield in Luau.
+- `return` as the arm value. `return` then means two things, and the
+  reader of `return nil` has to find the nearest arm to know which.
+- Wrap the match in a closure in every place. `return` in an arm would
+  then leave the closure, and `break` and `continue` could not reach
+  the loop.
 - `if` as the guard word, as Rust writes it. `where` is already the
   filter word of `for`, `if local`, and `while local`, and a second word
   for one idea is a word to learn.
@@ -229,6 +294,9 @@ and `clippy.` is a tool prefix like `flux.`:
 - Swift writes a guard `case let x where x > 5`, the form this takes.
 - Rust keeps `union` and `auto` as contextual keywords, and Luau does
   the same with `type`, `export`, and `continue`.
+- A Rust block's value is its last expression, and `return` always
+  leaves the function. Kotlin's `when` takes a block branch whose last
+  expression is the value.
 - Rust's `#[allow(clippy::lint)]` names a tool and its lint, the shape
   `@allow(clippy.lint)` follows.
 - Rust warns when a pattern binds a SCREAMING_CASE name, through
