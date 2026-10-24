@@ -151,13 +151,23 @@ What the compiler refuses inside the block:
 
 - A write to `Parent`, and a write to any other property of an
   `Instance` when the file knows the receiver's type. The file knows it
-  for a name annotated with an Instance class, a Roblox global such as
-  `workspace`, and a local that `Instance.new` built.
-- A call to `Instance.new`, `new Instance`, `Destroy`, or `Clone`, and
-  the `destroy` and `delete` statements.
-- A call to a function the file declares that itself does one of
-  those. One level deep, from the same file, because a whole program
-  analysis is a different proposal.
+  for:
+  - a name annotated with an Instance class, and a Roblox global such as
+    `workspace` or `game`, with any chain of fields under it;
+  - a local that `Instance.new` built, a value cast to an Instance class
+    with `::`, and the result of `GetService`, `FindFirstChild`, `->`, or
+    `=>`;
+  - an element of a table typed with an Instance class, by index or in a
+    `for` loop, `GetChildren` included;
+  - a struct field typed with an Instance class;
+  - a parameter of an `as parallel` message handler, with the type its
+    message gives it.
+- A call to `Instance.new`, `new Instance`, `Destroy`, or `Clone`, with
+  `:` or with `.`, and the `destroy` and `delete` statements.
+- A call to a function or a struct method the file declares that does
+  one of those, at any depth. The report names the chain of calls. The
+  check stays inside the file, because a whole program analysis is a
+  different proposal.
 - A nested `parallel` block, which the engine reads as already
   desynchronized.
 - `await`, because a Future resumes in the serial phase, and the block
@@ -169,6 +179,11 @@ What the compiler refuses inside the block:
 **Changed in the build**: the last item is new. The build also refuses
 `new Instance` and the `destroy` and `delete` statements, which are
 Alloy's own spellings of the calls the draft named.
+
+**Changed in 0.1.2**: the check follows helpers at any depth, and it
+knows the receivers in the first item that are not a plain annotated
+name. A local or a loop variable that shadows a typed name is a new
+value, and it does not take the outer name's type.
 
 Each report names the engine's rule and the write it refuses. The
 kind is `ParallelError`, section 3.15 of the book. A write of
@@ -185,8 +200,8 @@ check would be less useful than a line a reader can hold: the compiler
 sees what the file says, and the engine has the last word. Whole
 program analysis is a separate proposal.
 
-So this is a guard rail and not a proof. A write through a loop
-variable with no annotation, a field, or a value typed `any` cannot be
+So this is a guard rail and not a proof. A write through a value typed
+`any`, a table with no type, or a value from another module cannot be
 seen, and does not report. The `parallel` entry of the docs says so in
 its text, not in a footnote.
 
