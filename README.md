@@ -84,5 +84,12 @@ A merged RFC may be built. It carries no date. Some land in days, some
 wait months, and a proposal that waits long enough for the ground to
 move may be removed so it can be argued again.
 
+While a feature is built, its RFC takes a `**Status**: In development`
+line above the summary, with the name of its feature flag. The feature
+sits behind that flag, off by default, on the `upstream` branch of the
+compiler. A project turns it on under `[fflags]` in alloy.toml. The
+design may still change while the flag exists, and a revision to the RFC
+says how.
+
 When a feature ships, its RFC takes a `**Status**: Implemented` line
-above the summary.
+above the summary, and the flag goes.
