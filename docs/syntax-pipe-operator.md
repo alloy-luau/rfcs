@@ -1,5 +1,7 @@
 # `|>`: pipe operator
 
+**Status**: In development, behind the `AlloyExperimentalPipeOperator` flag
+
 ## Summary
 
 `a |> f(_)` evaluates `a` once, binds it to `_`, and evaluates the right
@@ -94,32 +96,37 @@ side still sees the outer `_`. So `a |> f(_ |> g(_))` is `f(g(a))`.
 
 ### Precedence
 
-`|>` binds more loosely than every Luau binary operator, including `or`,
-and is left-associative:
+`|>` binds more loosely than every binary operator of Luau and of
+Alloy, including `or` and `??`, and is left-associative:
 
 ```luau
 a or b |> f(_)        -- (a or b) |> f(_)
 x |> _ + 1 |> g(_)    -- (x |> _ + 1) |> g(_)
+x |> _.name ?? "?"    -- x |> (_.name ?? "?")
 ```
 
-An `if … then … else` expression used as a body ends at the next `|>`,
-so a pipe can follow it without parentheses.
+The `else` branch of an `if ... then ... else` expression ends at the
+next `|>`, so a pipe can follow the expression without parentheses, and
+`if c then a else b |> f(_)` pipes the whole `if`. A position that has
+its own end takes a whole pipe: an argument, a table field, an index,
+the inside of parentheses, and the condition of an `if`.
 
 ### Multiple values
 
 Each stage before the last passes one value on. The last stage's values
 are the values of the whole pipe, so in `local a, b = x |> f(_)`, `a`
-and `b` get both of `f`'s return values.
+and `b` get both of `f`'s return values. A pipe in parentheses gives one
+value, as a call in parentheses does.
 
 ### Emit
 
 Alloy emits code on the same lines as the source. How a pipe is emitted
 depends on where it appears.
 
-When a pipe is the entire right side of a single-value `local`, a
-single-target assignment, or a `return`, each stage becomes a local on
-the line where that stage starts, and the statement itself uses the last
-stage:
+A pipe is hoisted when it is the one expression on the right side of a
+`local`, a `const`, or a `return`, or of an assignment to one target.
+Each stage becomes a local on the line where that stage starts, and the
+statement itself uses the last stage:
 
 ```luau
 local label = humanoid.Health                            -- 1
@@ -137,8 +144,17 @@ local label = string.format("%d / %d", __pipe3, humanoid.MaxHealth) -- 4
 
 Each `_` is renamed to its stage's local. A stage that spans several
 lines, such as one containing a function literal, keeps its lines. A
-type annotation on the `local` (`local label: string = …`) moves to the
-last line along with the name.
+type annotation on the `local` (`local label: string = ...`) moves to the
+last line along with the name. A `local` with several names keeps them
+all on the last line, where they take the values of the last stage.
+
+Hoisting runs the first stage before the statement it sits in. For a
+`local`, a `const`, and a `return` nothing else runs first, so the order
+does not change. An assignment reads its target first, so it hoists only
+when that read has no effect: the target is a name, or one index of a
+name by a field, a name, or a literal, such as `label`, `state.label`,
+and `slots[i]`. Any other target, such as `find(id).label` or `a.b.c`,
+takes the function form below, which keeps the order as written.
 
 Anywhere else (an argument, an operand, a table field, or one of several
 values), the stages are emitted the same way inside an immediately
@@ -169,6 +185,9 @@ collide with names in user code.
 - `x |>` with nothing after it: `expected an expression after |>`.
 - `x |> function() _ = 1 end`: `_ is the piped value and cannot be
   assigned`, reported on `_`.
+- A `|>` with the flag off: `` `|>` is not final; set
+  `AlloyExperimentalPipeOperator = true` under `[fflags]` in alloy.toml
+  to use it ``, reported on the `|>`.
 
 Type errors inside a stage come from Luau and are reported on the
 emitted local. Because that local is on the stage's line, the error maps
@@ -181,8 +200,8 @@ back to the stage, and `__pipeN` in the message is shown as `_`.
 - Completion after `_.` and `_:` is completion for that type.
 - Rename and references treat `_` as a local of its stage. Renaming `_`
   itself is refused, since the author didn't choose that name.
-- Optionally, inlay hints can show the type at the end of each stage's
-  line.
+- An inlay hint shows the type at the end of the line of each stage but
+  the last, under the setting for the types of variables.
 
 ### The formatter
 
@@ -241,12 +260,32 @@ valid. `$` would be a new character for Luau, `@` is Alloy's attribute
 sigil, and `#` is the length operator. `_` is already the conventional
 Luau name for a placeholder value and needs no new token.
 
-Wrapper objects (`Iter.from(t):filter(…):map(…)`) work when one library
+Wrapper objects (`Iter.from(t):filter(...):map(...)`) work when one library
 provides every step. They don't help with `math`, `string`, or a UI
 library's free functions.
 
 Alloy macros are expression templates, so a macro cannot introduce a
 binding that the caller's expression reads, which is what `_` needs.
+
+A `do ... end` block around the stage locals of a hoisted pipe would end
+their scope at the statement and give the 200 locals back. The declared
+name would then be a `local` with no value and an assignment inside the
+block. That form cannot write a `const`, it puts a `do` and an `end` on
+lines the author did not write them on, and the checker may type a name
+less exactly from a later assignment than from its declaration. The
+stage locals stay in the block of the statement. A function that nears
+the limit can put the pipe in a function of its own.
+
+A bare name as a body, `x |> f` for `f(_)`, stays an error. It would be
+the one body that does not read `_`, and `x |> f.g` and `x |> f()` would
+then need a rule each. A later RFC can add it, since the form does not
+compile today.
+
+A call statement with a pipe as its one argument, `print(x |> f(_))`,
+takes the function form and does not hoist. Hoisting there would run the
+pipe before the callee, and `find(id):send(x |> f(_))` would change its
+order. One rule covers every position: a pipe hoists only where nothing
+of the statement runs before it.
 
 If nothing is done, code stays nested inside out or names every
 intermediate step.
@@ -273,30 +312,14 @@ intermediate step.
   argument.
 - PHP added `|>` in 8.5. The right side must be a one-parameter
   callable.
-- Luau has no pipe operator.
-
-  > TODO: check luau-lang/rfcs and the issue tracker for a past
-  > proposal, or a reason one was rejected.
+- Luau has no pipe operator, and no proposal for one is on record.
+  On 2026-11-16 no pull request of luau-lang/rfcs, open or closed,
+  named a pipe in its title, and a search of that repository and of the
+  issues of luau-lang/luau for `pipe operator`, `pipeline operator`, and
+  `|>` found nothing. So Luau has not turned the operator down, and it
+  has not taken the `|>` token.
 
 - In Alloy, `?.` chains through a value's own fields, and the expression
   form of `match` already emits an immediately invoked function with a
   hoisted local. This proposal uses the same emit and the same reserved
   prefix.
-
-## Unresolved questions
-
-Should the `__pipe` locals in statement position go inside a `do … end`
-block? That would end their scope at the statement and save locals in
-long functions. The declared name would then need to be an uninitialized
-`local` followed by an assignment, which Luau's checker may type less
-precisely.
-
-Should a bare name be allowed as shorthand for a call (`x |> f` meaning
-`f(_)`)? This proposal makes it an error, which leaves that decision for
-a later RFC.
-
-Should a call statement whose only argument is a pipe
-(`print(x |> f(_))`) hoist the pipe like `local` does, instead of
-wrapping it in a function? Hoisting would evaluate the pipe before the
-callee expression, which only matters if evaluating the callee has side
-effects.
